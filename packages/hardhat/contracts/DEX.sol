@@ -27,22 +27,42 @@ contract DEX {
     /**
      * @notice Emitted when ethToToken() swap transacted
      */
-    event EthToTokenSwap(uint256 ethInput, uint256 tokenOutput);
+    event EthToTokenSwap(
+        address sender,
+        string trade,
+        uint256 amountIn,
+        uint256 amountOut
+    );
 
     /**
      * @notice Emitted when tokenToEth() swap transacted
      */
-    event TokenToEthSwap(uint256 tokenInput, uint256 ethOutput);
+    event TokenToEthSwap(
+        address sender,
+        string trade,
+        uint256 amountIn,
+        uint256 amountOut
+    );
 
     /**
      * @notice Emitted when liquidity provided to DEX and mints LPTs.
      */
-    event LiquidityProvided(uint256 ethDeposited, uint256 tokensDeposited);
+    event LiquidityProvided(
+        address sender,
+        uint256 liquidityMinted,
+        uint256 ethIn,
+        uint256 tokensIn
+    );
 
     /**
      * @notice Emitted when liquidity removed from DEX and decreases LPT count within DEX.
      */
-    event LiquidityRemoved(uint256 amount);
+    event LiquidityRemoved(
+        address sender,
+        uint256 liquidityWithdrawn,
+        uint256 ethOut,
+        uint256 tokensOut
+    );
 
     /* ========== CONSTRUCTOR ========== */
 
@@ -99,7 +119,7 @@ contract DEX {
         );
         require(token.transfer(msg.sender, tokenOutput));
 
-        emit EthToTokenSwap(msg.value, tokenOutput);
+        emit EthToTokenSwap(msg.sender, "ETH-BAL", msg.value, tokenOutput);
         return tokenOutput;
     }
 
@@ -120,7 +140,7 @@ contract DEX {
         require(sent);
         require(token.transferFrom(msg.sender, address(this), tokenInput));
 
-        emit TokenToEthSwap(tokenInput, ethOutput);
+        emit TokenToEthSwap(msg.sender, "BAL-ETH", tokenInput, ethOutput);
         return ethOutput;
     }
 
@@ -140,7 +160,12 @@ contract DEX {
         totalLiquidity = totalLiquidity.add(liquidityMinted);
         require(token.transferFrom(msg.sender, address(this), tokensDeposited));
 
-        emit LiquidityProvided(msg.value, tokensDeposited);
+        emit LiquidityProvided(
+            msg.sender,
+            liquidityMinted,
+            msg.value,
+            tokensDeposited
+        );
         return tokensDeposited;
     }
 
@@ -168,7 +193,7 @@ contract DEX {
         require(sent);
         require(token.transfer(msg.sender, tokenAmount));
 
-        emit LiquidityRemoved(amount);
+        emit LiquidityRemoved(msg.sender, amount, ethAmount, tokenAmount);
         return (ethAmount, tokenAmount);
     }
 }
