@@ -27,22 +27,22 @@ contract DEX {
     /**
      * @notice Emitted when ethToToken() swap transacted
      */
-    event EthToTokenSwap();
+    event EthToTokenSwap(uint256 ethInput, uint256 tokenOutput);
 
     /**
      * @notice Emitted when tokenToEth() swap transacted
      */
-    event TokenToEthSwap();
+    event TokenToEthSwap(uint256 tokenInput, uint256 ethOutput);
 
     /**
      * @notice Emitted when liquidity provided to DEX and mints LPTs.
      */
-    event LiquidityProvided();
+    event LiquidityProvided(uint256 ethDeposited, uint256 tokensDeposited);
 
     /**
      * @notice Emitted when liquidity removed from DEX and decreases LPT count within DEX.
      */
-    event LiquidityRemoved();
+    event LiquidityRemoved(uint256 amount);
 
     /* ========== CONSTRUCTOR ========== */
 
@@ -97,10 +97,9 @@ contract DEX {
             address(this).balance.sub(msg.value),
             token.balanceOf(address(this))
         );
-
         require(token.transfer(msg.sender, tokenOutput));
-        console.log("Tokens returned:");
-        console.log(tokenOutput);
+
+        emit EthToTokenSwap(msg.value, tokenOutput);
         return tokenOutput;
     }
 
@@ -121,6 +120,7 @@ contract DEX {
         require(sent);
         require(token.transferFrom(msg.sender, address(this), tokenInput));
 
+        emit TokenToEthSwap(tokenInput, ethOutput);
         return ethOutput;
     }
 
@@ -135,9 +135,12 @@ contract DEX {
         uint256 tokenReserve = token.balanceOf(address(this));
         tokensDeposited = (msg.value.mul(tokenReserve) / ethReserve).add(1);
         uint256 liquidityMinted = msg.value.mul(totalLiquidity) / ethReserve;
+
         liquidity[msg.sender] = liquidity[msg.sender].add(liquidityMinted);
         totalLiquidity = totalLiquidity.add(liquidityMinted);
         require(token.transferFrom(msg.sender, address(this), tokensDeposited));
+
+        emit LiquidityProvided(msg.value, tokensDeposited);
         return tokensDeposited;
     }
 
@@ -147,13 +150,13 @@ contract DEX {
      */
     function withdraw(uint256 amount)
         public
-        returns (uint256 eth_amount, uint256 token_amount)
+        returns (uint256 ethAmount, uint256 tokenAmount)
     {
         uint256 ethReserve = address(this).balance;
         uint256 tokenReserve = token.balanceOf(address(this));
 
-        eth_amount = amount.mul(ethReserve) / totalLiquidity;
-        token_amount = amount.mul(tokenReserve) / totalLiquidity;
+        ethAmount = amount.mul(ethReserve) / totalLiquidity;
+        tokenAmount = amount.mul(tokenReserve) / totalLiquidity;
 
         liquidity[msg.sender] = liquidity[msg.sender].sub(amount);
         totalLiquidity = totalLiquidity.sub(amount);
@@ -161,10 +164,11 @@ contract DEX {
         (
             bool sent, /*bytes memory data*/
 
-        ) = msg.sender.call{value: eth_amount}("");
+        ) = msg.sender.call{value: ethAmount}("");
         require(sent);
-        require(token.transfer(msg.sender, token_amount));
+        require(token.transfer(msg.sender, tokenAmount));
 
-        return (eth_amount, token_amount);
+        emit LiquidityRemoved(amount);
+        return (ethAmount, tokenAmount);
     }
 }
