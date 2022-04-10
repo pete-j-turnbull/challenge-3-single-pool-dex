@@ -2,6 +2,7 @@
 
 pragma solidity >=0.8.0 <0.9.0;
 
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
@@ -73,7 +74,12 @@ contract DEX {
         uint256 xInput,
         uint256 xReserves,
         uint256 yReserves
-    ) public view returns (uint256 yOutput) {}
+    ) public pure returns (uint256 yOutput) {
+        uint256 input_amount_with_fee = xInput.mul(997);
+        uint256 numerator = input_amount_with_fee.mul(yReserves);
+        uint256 denominator = xReserves.mul(1000).add(input_amount_with_fee);
+        return numerator / denominator;
+    }
 
     /**
      * @notice returns liquidity for a user. Note this is not needed typically due to the `liquidity()` mapping variable being public and having a getter as a result. This is left though as it is used within the front end code (App.jsx).
@@ -85,15 +91,38 @@ contract DEX {
     /**
      * @notice sends Ether to DEX in exchange for $BAL
      */
-    function ethToToken() public payable returns (uint256 tokenOutput) {}
+    function ethToToken() public payable returns (uint256 tokenOutput) {
+        tokenOutput = price(
+            msg.value,
+            address(this).balance.sub(msg.value),
+            token.balanceOf(address(this))
+        );
+
+        require(token.transfer(msg.sender, tokenOutput));
+        console.log("Tokens returned:");
+        console.log(tokenOutput);
+        return tokenOutput;
+    }
 
     /**
      * @notice sends $BAL tokens to DEX in exchange for Ether
      */
-    function tokenToEth(uint256 tokenInput)
-        public
-        returns (uint256 ethOutput)
-    {}
+    function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {
+        ethOutput = price(
+            tokenInput,
+            token.balanceOf(address(this)),
+            address(this).balance
+        );
+
+        (
+            bool sent, /* bytes memory data */
+
+        ) = payable(msg.sender).call{value: ethOutput}("");
+        require(sent);
+        require(token.transferFrom(msg.sender, address(this), tokenInput));
+
+        return ethOutput;
+    }
 
     /**
      * @notice allows deposits of $BAL and $ETH to liquidity pool
@@ -101,7 +130,16 @@ contract DEX {
      * NOTE: user has to make sure to give DEX approval to spend their tokens on their behalf by calling approve function prior to this function call.
      * NOTE: Equal parts of both assets will be removed from the user's wallet with respect to the price outlined by the AMM.
      */
-    function deposit() public payable returns (uint256 tokensDeposited) {}
+    function deposit() public payable returns (uint256 tokensDeposited) {
+        uint256 ethReserve = address(this).balance.sub(msg.value);
+        uint256 tokenReserve = token.balanceOf(address(this));
+        tokensDeposited = (msg.value.mul(tokenReserve) / ethReserve).add(1);
+        uint256 liquidityMinted = msg.value.mul(totalLiquidity) / ethReserve;
+        liquidity[msg.sender] = liquidity[msg.sender].add(liquidityMinted);
+        totalLiquidity = totalLiquidity.add(liquidityMinted);
+        require(token.transferFrom(msg.sender, address(this), tokensDeposited));
+        return tokensDeposited;
+    }
 
     /**
      * @notice allows withdrawal of $BAL and $ETH from liquidity pool
@@ -110,5 +148,23 @@ contract DEX {
     function withdraw(uint256 amount)
         public
         returns (uint256 eth_amount, uint256 token_amount)
-    {}
+    {
+        uint256 ethReserve = address(this).balance;
+        uint256 tokenReserve = token.balanceOf(address(this));
+
+        eth_amount = amount.mul(ethReserve) / totalLiquidity;
+        token_amount = amount.mul(tokenReserve) / totalLiquidity;
+
+        liquidity[msg.sender] = liquidity[msg.sender].sub(amount);
+        totalLiquidity = totalLiquidity.sub(amount);
+
+        (
+            bool sent, /*bytes memory data*/
+
+        ) = msg.sender.call{value: eth_amount}("");
+        require(sent);
+        require(token.transfer(msg.sender, token_amount));
+
+        return (eth_amount, token_amount);
+    }
 }
